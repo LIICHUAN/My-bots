@@ -7,11 +7,11 @@ intents = discord.Intents.default()
 intents.message_content = True   
 intents.voice_states = True     
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='/', intents=intents)
 @bot.event
 async def on_ready():
     print(f'✅ 机器人已上线：{bot.user.name}')
-    print('输入 !加入 让我进入语音频道')
+    print('输入 /joincall 让我进入语音频道')
 
 @bot.command()
 async def 加入(ctx):
@@ -23,7 +23,7 @@ async def 加入(ctx):
     await ctx.send(f"✅ 已加入 {channel.name}")
 
 @bot.command()
-async def 离开(ctx):
+async def leavecall(ctx):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
         await ctx.send("👋 已离开")
