@@ -14,7 +14,7 @@ async def on_ready():
     print('输入 /joincall 让我进入语音频道')
 
 @bot.command()
-async def 加入(ctx):
+async def joincall(ctx):
     if not ctx.author.voice:
         await ctx.send("❌ 你不在语音频道里")
         return
