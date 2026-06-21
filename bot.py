@@ -246,7 +246,7 @@ async def slash_pick(interaction: discord.Interaction, 选项: str):
 
 
 # ============================================================
-#                    ⏰ 提醒功能 /reminder（修复版）
+#                    ⏰ 提醒功能 /reminder
 # ============================================================
 
 @bot.tree.command(name='reminder', description='设置一个定时提醒（可选择是否语音提醒）')
@@ -365,6 +365,30 @@ async def slash_remind(
     if not bot_voice and not user_voice:
         await channel.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
 
+# ============================================================
+#                    ⏰ 取消所有提醒 /reminderclear
+# ============================================================
+
+# 用于存储每个用户的提醒任务
+user_reminders = {}  # {user_id: [asyncio.Task, ...]}
+
+@bot.tree.command(name='reminderclear', description='取消你所有的定时提醒')
+async def slash_reminder_clear(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    
+    if user_id not in user_reminders or not user_reminders[user_id]:
+        await interaction.response.send_message("❌ 你当前没有正在进行的提醒", ephemeral=True)
+        return
+    
+    # 取消所有提醒任务
+    count = len(user_reminders[user_id])
+    for task in user_reminders[user_id]:
+        task.cancel()
+    
+    # 清空列表
+    user_reminders[user_id] = []
+    
+    await interaction.response.send_message(f"✅ 已取消你的 **{count}** 个定时提醒", ephemeral=True)
 
 # ============================================================
 #                    🗳️ 投票功能
