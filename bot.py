@@ -8,25 +8,16 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 
-class MyBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix='!', intents=intents) # 前缀保留，但主要用斜杠
-        self.synced = False # 用来标记是否已同步命令
+bot = commands.Bot(command_prefix='/', intents=intents)
 
-    async def on_ready(self):
-        await self.wait_until_ready()
-        if not self.synced:
-            # 将命令同步到当前服务器（这样会立刻生效）
-            guild = discord.Object(id=YOUR_GUILD_ID) # 重要：替换成你的服务器ID
-            await self.tree.sync(guild=guild)
-            self.synced = True
-            print(f'✅ 机器人已上线：{self.user.name}')
-            print('请使用 /joincall 和 /leavecall 命令')
+@bot.event
+async def on_ready():
+    await bot.tree.sync()  # 全局同步（不加guild参数）
+    print(f'✅ 机器人已上线：{bot.user.name}')
+    print('等待 Discord 全局同步（最多1小时），之后 /加入 可用')
 
-bot = MyBot()
-
-# 定义一个“加入”的斜杠命令
-@bot.tree.command(name='joincall', description='让我进入你所在的语音频道', guild=discord.Object(id=YOUR_GUILD_ID))
+# 全局斜杠命令（去掉 guild 参数）
+@bot.tree.command(name='joincall', description='让我进入你所在的语音频道')
 async def slash_join(interaction: discord.Interaction):
     if not interaction.user.voice:
         await interaction.response.send_message("❌ 你不在语音频道里")
@@ -35,8 +26,7 @@ async def slash_join(interaction: discord.Interaction):
     await channel.connect()
     await interaction.response.send_message(f"✅ 已加入 {channel.name}")
 
-# 定义一个“离开”的斜杠命令
-@bot.tree.command(name='leavecall', description='让我离开语音频道', guild=discord.Object(id=YOUR_GUILD_ID))
+@bot.tree.command(name='leavecall', description='让我离开语音频道')
 async def slash_leave(interaction: discord.Interaction):
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
@@ -44,7 +34,8 @@ async def slash_leave(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ 我不在语音频道里")
 
-# 如果想保留 !加入 作为备选，可以保留原来的代码，互不冲突
+# 保留 !加入 和 !离开 作为备选（前面的代码里已经写过了）
+# ... 这里保留你原来 !加入 和 !离开 的代码 ...
 
 keep_alive()
 bot.run(os.getenv("TOKEN"))
