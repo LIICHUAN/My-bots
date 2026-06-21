@@ -25,7 +25,7 @@ async def on_ready():
     await bot.tree.sync()
     print(f'✅ 机器人已上线：{bot.user.name}')
     print('使用 /joincall 让我进入你所在的频道')
-    print('使用 /joincall channel:name 进入指定频道')
+    print('使用 /joincall channel:频道名 进入指定频道')
     print('使用 /leavecall 让我离开')
     print('使用 /status 查看我在哪')
     print('⚠️ 只有管理员可以使用加入和离开命令')
@@ -34,7 +34,7 @@ async def on_ready():
 # ========== 加入命令（斜杠版）- 仅管理员 ==========
 @bot.tree.command(name='joincall', description='进入你所在的语音频道，或指定一个频道')
 @app_commands.describe(channel='要进入的语音频道（可选）')
-async def slash_join(interaction: discord.Interaction, 频道: discord.VoiceChannel = None):
+async def slash_join(interaction: discord.Interaction, channel: discord.VoiceChannel = None):
     # 权限检查：非管理员拒绝
     if not is_admin(interaction):
         await interaction.response.send_message(
@@ -44,7 +44,7 @@ async def slash_join(interaction: discord.Interaction, 频道: discord.VoiceChan
         return
 
     # 如果没有指定频道 → 进入用户当前所在的频道
-    if 频道 is None:
+    if channel is None:
         if not interaction.user.voice:
             await interaction.response.send_message(
                 "❌ 你不在语音频道里！请先进入一个语音频道，或指定一个频道。",
@@ -102,7 +102,7 @@ async def slash_status(interaction: discord.Interaction):
 async def 加入(ctx, *, target: discord.VoiceChannel = None):
     # 权限检查
     if not is_admin_ctx(ctx):
-        await ctx.send("❌ 你没有权限使用此命令！仅管理员可以使用 `/joincall`")
+        await ctx.send("❌ 你没有权限使用此命令！仅管理员可以使用 `!加入`")
         return
 
     if target is None:
@@ -125,7 +125,7 @@ async def 加入(ctx, *, target: discord.VoiceChannel = None):
 async def 离开(ctx):
     # 权限检查
     if not is_admin_ctx(ctx):
-        await ctx.send("❌ 你没有权限使用此命令！仅管理员可以使用 `/leavecall`")
+        await ctx.send("❌ 你没有权限使用此命令！仅管理员可以使用 `!离开`")
         return
 
     if ctx.voice_client:
