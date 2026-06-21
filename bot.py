@@ -167,7 +167,7 @@ async def slash_pick(interaction: discord.Interaction, 选项: str):
 #                    ⏰ 提醒功能（所有人可用）
 # ============================================================
 
-@bot.tree.command(name='提醒', description='设置一个定时提醒')
+@bot.tree.command(name='reminder', description='设置一个定时提醒')
 @app_commands.describe(时间='如：10秒、5分钟、2小时', 内容='提醒的内容')
 async def slash_remind(interaction: discord.Interaction, 时间: str, 内容: str):
     try:
@@ -199,7 +199,7 @@ async def slash_remind(interaction: discord.Interaction, 时间: str, 内容: st
 #                    🗳️ 投票功能（所有人可用）
 # ============================================================
 
-@bot.tree.command(name='投票', description='发起一个简单投票（赞/踩/中立）')
+@bot.tree.command(name='poll', description='发起一个简单投票（赞/踩/中立）')
 @app_commands.describe(内容='投票的内容')
 async def slash_poll(interaction: discord.Interaction, 内容: str):
     await interaction.response.send_message(
@@ -211,14 +211,13 @@ async def slash_poll(interaction: discord.Interaction, 内容: str):
     await msg.add_reaction("🤷")
 
 
-@bot.tree.command(name='vote', description='发起一个带选项的投票（2-3个选项）')
+@bot.tree.command(name='vote', description='发起一个带选项的投票（2-9个选项）')
 @app_commands.describe(问题='投票的问题', 选项='用空格分隔的选项，如：海边 山上 游乐园')
 async def slash_poll_options(interaction: discord.Interaction, 问题: str, 选项: str):
     items = [item.strip() for item in 选项.split()]
-    if len(items) < 2 or len(items) > 3:
-    await interaction.response.send_message("❌ 请提供 2 或 3 个选项", ephemeral=True)
+if len(items) < 2 or len(items) > 9:
+    await interaction.response.send_message("❌ 请提供 2 到 9 个选项", ephemeral=True)
     return
-
     emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
     msg_text = f"📊 **{interaction.user.name} 发起投票：{问题}**\n\n"
     for i, opt in enumerate(items):
