@@ -15,6 +15,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 # ========== 全局变量 ==========
 silence_tasks = {}  # {guild_id: asyncio.Task}
+user_reminders = {}  # {user_id: [asyncio.Task, ...]}
 
 
 # ========== 静音循环播放函数 ==========
@@ -246,7 +247,7 @@ async def slash_pick(interaction: discord.Interaction, 选项: str):
 
 
 # ============================================================
-#                    ⏰ 提醒功能 /reminder
+#                    ⏰ 提醒功能 /reminder（带 clear 支持）
 # ============================================================
 
 @bot.tree.command(name='reminder', description='设置一个定时提醒（可选择是否语音提醒）')
@@ -289,7 +290,18 @@ async def slash_remind(
     await interaction.response.send_message(f"⏰ 好的，我会在 **{time}** 后提醒你：{content}\n🔊 语音提醒：{voice_status}")
 
     channel = interaction.channel
+
+    # ========== 保存提醒任务到用户列表 ==========
+    current_task = asyncio.current_task()
+    if interaction.user.id not in user_reminders:
+        user_reminders[interaction.user.id] = []
+    user_reminders[interaction.user.id].append(current_task)
+
     await asyncio.sleep(seconds)
+
+    # ========== 提醒结束后从列表中移除自己 ==========
+    if interaction.user.id in user_reminders and current_task in user_reminders[interaction.user.id]:
+        user_reminders[interaction.user.id].remove(current_task)
 
     await channel.send(f"⏰ {interaction.user.mention} 时间到！记得：{content}")
 
@@ -365,12 +377,10 @@ async def slash_remind(
     if not bot_voice and not user_voice:
         await channel.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
 
+
 # ============================================================
 #                    ⏰ 取消所有提醒 /reminderclear
 # ============================================================
-
-# 用于存储每个用户的提醒任务
-user_reminders = {}  # {user_id: [asyncio.Task, ...]}
 
 @bot.tree.command(name='reminderclear', description='取消你所有的定时提醒')
 async def slash_reminder_clear(interaction: discord.Interaction):
@@ -389,6 +399,7 @@ async def slash_reminder_clear(interaction: discord.Interaction):
     user_reminders[user_id] = []
     
     await interaction.response.send_message(f"✅ 已取消你的 **{count}** 个定时提醒", ephemeral=True)
+
 
 # ============================================================
 #                    🗳️ 投票功能
