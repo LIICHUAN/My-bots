@@ -158,23 +158,36 @@ async def slash_pick(interaction: discord.Interaction, 选项: str):
 
 
 # ============================================================
-#                    ⏰ 提醒功能 /reminder
+#                    ⏰ 提醒功能 /reminder（带语音开关）
 # ============================================================
 
-@bot.tree.command(name='reminder', description='设置一个定时提醒')
-@app_commands.describe(时间='如：10秒、5分钟、2小时', 内容='提醒的内容')
-async def slash_remind(interaction: discord.Interaction, 时间: str, 内容: str):
+@bot.tree.command(name='reminder', description='设置一个定时提醒（可选择是否语音提醒）')
+@app_commands.describe(
+    time='如：10秒、5分钟、2小时',
+    content='提醒的内容',
+    voice='是否在语音频道播放提醒音效（默认开启）'
+)
+@app_commands.choices(voice=[
+    discord.app_commands.Choice(name='开启（默认）', value='on'),
+    discord.app_commands.Choice(name='关闭', value='off')
+])
+async def slash_remind(
+    interaction: discord.Interaction, 
+    time: str, 
+    content: str,
+    voice: str = 'on'
+):
     try:
-        if "秒" in 时间:
-            seconds = int(时间.replace("秒", ""))
-        elif "分钟" in 时间 or "分" in 时间:
-            seconds = int(时间.replace("分钟", "").replace("分", "")) * 60
-        elif "小时" in 时间 or "时" in 时间:
-            seconds = int(时间.replace("小时", "").replace("时", "")) * 3600
+        if "秒" in time:
+            seconds = int(time.replace("秒", ""))
+        elif "分钟" in time or "分" in time:
+            seconds = int(time.replace("分钟", "").replace("分", "")) * 60
+        elif "小时" in time or "时" in time:
+            seconds = int(time.replace("小时", "").replace("时", "")) * 3600
         else:
-            seconds = int(时间)
+            seconds = int(time)
     except:
-        await interaction.response.send_message("❌ 格式不对！如：`/reminder 10分钟 开会`", ephemeral=True)
+        await interaction.response.send_message("❌ 格式不对！如：`/reminder time:10分钟 content:开会`", ephemeral=True)
         return
 
     if seconds < 5:
@@ -184,9 +197,93 @@ async def slash_remind(interaction: discord.Interaction, 时间: str, 内容: st
         await interaction.response.send_message("❌ 最多 24 小时！", ephemeral=True)
         return
 
-    await interaction.response.send_message(f"⏰ 好的，我会在 **{时间}** 后提醒你：{内容}")
+    # 显示是否开启语音
+    voice_status = "🔊 开启" if voice == 'on' else "🔇 关闭"
+    await interaction.response.send_message(f"⏰ 好的，我会在 **{time}** 后提醒你：{content}\n🔊 语音提醒：{voice_status}")
+
+    # 等待指定时间
     await asyncio.sleep(seconds)
-    await interaction.followup.send(f"⏰ {interaction.user.mention} 时间到！记得：{内容}")
+
+    # ========== 先发文字提醒 ==========
+    await interaction.followup.send(f"⏰ {interaction.user.mention} 时间到！记得：{content}")
+
+    # ========== 如果用户关闭了语音提醒，到此结束 ==========
+    if voice == 'off':
+        await interaction.followup.send("ℹ️ 语音提醒已关闭，只发了文字提醒～")
+        return
+
+    # ========== 语音提醒逻辑（用户开启了语音） ==========
+    guild_id = interaction.guild.id
+    user_voice = interaction.user.voice
+    bot_voice = interaction.guild.voice_client
+
+    # 情况一：机器人在频道，人在频道 → 播放提醒
+    if bot_voice and bot_voice.is_connected() and user_voice and user_voice.channel:
+        try:
+            # 先停止静音循环
+            if guild_id in silence_tasks:
+                silence_tasks[guild_id].cancel()
+                del silence_tasks[guild_id]
+            
+            await asyncio.sleep(0.5)
+            
+            # 播放提醒音效
+            if os.path.exists('remind.mp3'):
+                audio_source = discord.FFmpegPCMAudio('remind.mp3')
+                bot_voice.play(audio_source)
+                
+                while bot_voice.is_playing():
+                    await asyncio.sleep(0.5)
+                
+                await interaction.followup.send("🔔 语音提醒已播放！")
+            else:
+                await interaction.followup.send("⚠️ 提醒音效文件不存在，只发了文字提醒")
+            
+            # 恢复静音循环
+            if bot_voice and bot_voice.is_connected():
+                task = asyncio.create_task(play_silence_loop(bot_voice, guild_id))
+                silence_tasks[guild_id] = task
+                
+        except Exception as e:
+            print(f"语音提醒播放失败：{e}")
+            await interaction.followup.send("⚠️ 语音提醒播放失败，但文字提醒已发送")
+        return
+
+    # 情况二：机器人在频道，人不在频道 → 显示人不在
+    if bot_voice and bot_voice.is_connected() and not user_voice:
+        await interaction.followup.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
+        return
+
+    # 情况三：机器人不在频道，人在频道 → 进去播放后退出（不切静音）
+    if not bot_voice and user_voice and user_voice.channel:
+        try:
+            voice_channel = user_voice.channel
+            voice_client = await voice_channel.connect()
+            
+            if os.path.exists('remind.mp3'):
+                audio_source = discord.FFmpegPCMAudio('remind.mp3')
+                voice_client.play(audio_source)
+                
+                while voice_client.is_playing():
+                    await asyncio.sleep(0.5)
+                
+                await interaction.followup.send("🔔 语音提醒已播放！")
+            else:
+                await interaction.followup.send("⚠️ 提醒音效文件不存在，只发了文字提醒")
+            
+            # 播放完成后退出（不切静音）
+            if voice_client and voice_client.is_connected():
+                await voice_client.disconnect()
+                await interaction.followup.send("👋 播放完成，已离开语音频道")
+                
+        except Exception as e:
+            print(f"语音提醒连接失败：{e}")
+            await interaction.followup.send("⚠️ 无法连接到语音频道，只发了文字提醒")
+        return
+
+    # 情况四：机器人不在频道，人也不在频道
+    if not bot_voice and not user_voice:
+        await interaction.followup.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
 
 
 # ============================================================
