@@ -158,7 +158,7 @@ async def slash_pick(interaction: discord.Interaction, 选项: str):
 
 
 # ============================================================
-#                    ⏰ 提醒功能 /reminder（带语音开关）
+#                    ⏰ 提醒功能 /reminder（修复版）
 # ============================================================
 
 @bot.tree.command(name='reminder', description='设置一个定时提醒（可选择是否语音提醒）')
@@ -201,15 +201,18 @@ async def slash_remind(
     voice_status = "🔊 开启" if voice == 'on' else "🔇 关闭"
     await interaction.response.send_message(f"⏰ 好的，我会在 **{time}** 后提醒你：{content}\n🔊 语音提醒：{voice_status}")
 
+    # 获取文字频道（用于后续发送提醒）
+    channel = interaction.channel
+
     # 等待指定时间
     await asyncio.sleep(seconds)
 
-    # ========== 先发文字提醒 ==========
-    await interaction.followup.send(f"⏰ {interaction.user.mention} 时间到！记得：{content}")
+    # ========== 通过文字频道发送提醒（不用 followup） ==========
+    await channel.send(f"⏰ {interaction.user.mention} 时间到！记得：{content}")
 
     # ========== 如果用户关闭了语音提醒，到此结束 ==========
     if voice == 'off':
-        await interaction.followup.send("ℹ️ 语音提醒已关闭，只发了文字提醒～")
+        await channel.send("ℹ️ 语音提醒已关闭，只发了文字提醒～")
         return
 
     # ========== 语音提醒逻辑（用户开启了语音） ==========
@@ -235,9 +238,9 @@ async def slash_remind(
                 while bot_voice.is_playing():
                     await asyncio.sleep(0.5)
                 
-                await interaction.followup.send("🔔 语音提醒已播放！")
+                await channel.send("🔔 语音提醒已播放！")
             else:
-                await interaction.followup.send("⚠️ 提醒音效文件不存在，只发了文字提醒")
+                await channel.send("⚠️ 提醒音效文件不存在，只发了文字提醒")
             
             # 恢复静音循环
             if bot_voice and bot_voice.is_connected():
@@ -246,12 +249,12 @@ async def slash_remind(
                 
         except Exception as e:
             print(f"语音提醒播放失败：{e}")
-            await interaction.followup.send("⚠️ 语音提醒播放失败，但文字提醒已发送")
+            await channel.send("⚠️ 语音提醒播放失败，但文字提醒已发送")
         return
 
     # 情况二：机器人在频道，人不在频道 → 显示人不在
     if bot_voice and bot_voice.is_connected() and not user_voice:
-        await interaction.followup.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
+        await channel.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
         return
 
     # 情况三：机器人不在频道，人在频道 → 进去播放后退出（不切静音）
@@ -267,24 +270,23 @@ async def slash_remind(
                 while voice_client.is_playing():
                     await asyncio.sleep(0.5)
                 
-                await interaction.followup.send("🔔 语音提醒已播放！")
+                await channel.send("🔔 语音提醒已播放！")
             else:
-                await interaction.followup.send("⚠️ 提醒音效文件不存在，只发了文字提醒")
+                await channel.send("⚠️ 提醒音效文件不存在，只发了文字提醒")
             
             # 播放完成后退出（不切静音）
             if voice_client and voice_client.is_connected():
                 await voice_client.disconnect()
-                await interaction.followup.send("👋 播放完成，已离开语音频道")
+                await channel.send("👋 播放完成，已离开语音频道")
                 
         except Exception as e:
             print(f"语音提醒连接失败：{e}")
-            await interaction.followup.send("⚠️ 无法连接到语音频道，只发了文字提醒")
+            await channel.send("⚠️ 无法连接到语音频道，只发了文字提醒")
         return
 
     # 情况四：机器人不在频道，人也不在频道
     if not bot_voice and not user_voice:
-        await interaction.followup.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
-
+        await channel.send("ℹ️ 你不在语音频道里，无法播放语音提醒")
 
 # ============================================================
 #                    🗳️ 投票功能 /poll 和 /polloptions
