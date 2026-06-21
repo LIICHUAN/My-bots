@@ -15,11 +15,9 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 # ========== 权限检查函数 ==========
 def is_admin(interaction: discord.Interaction) -> bool:
-    """检查用户是否有管理员权限"""
     return interaction.user.guild_permissions.administrator
 
 def is_admin_ctx(ctx) -> bool:
-    """文本命令的权限检查"""
     return ctx.author.guild_permissions.administrator
 
 
@@ -38,7 +36,6 @@ async def on_ready():
 @bot.tree.command(name='joincall', description='进入你所在的语音频道，或指定一个频道')
 @app_commands.describe(channel='要进入的语音频道（可选）')
 async def slash_join(interaction: discord.Interaction, channel: discord.VoiceChannel = None):
-    # 权限检查：非管理员拒绝
     if not is_admin(interaction):
         await interaction.response.send_message(
             "❌ 你没有权限使用此命令！仅管理员可以使用 /joincall",
@@ -46,7 +43,6 @@ async def slash_join(interaction: discord.Interaction, channel: discord.VoiceCha
         )
         return
 
-    # 如果没有指定频道 → 进入用户当前所在的频道
     if channel is None:
         if not interaction.user.voice:
             await interaction.response.send_message(
@@ -58,12 +54,10 @@ async def slash_join(interaction: discord.Interaction, channel: discord.VoiceCha
     else:
         target = channel
 
-    # 如果机器人已经在这个频道里
     if interaction.guild.voice_client and interaction.guild.voice_client.channel == target:
         await interaction.response.send_message(f"ℹ️ 我已经在 {target.name} 里了")
         return
 
-    # 如果在其他频道，先断开
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
 
@@ -74,7 +68,6 @@ async def slash_join(interaction: discord.Interaction, channel: discord.VoiceCha
 # ========== 离开命令（斜杠版）- 仅管理员 ==========
 @bot.tree.command(name='leavecall', description='让我离开语音频道')
 async def slash_leave(interaction: discord.Interaction):
-    # 权限检查：非管理员拒绝
     if not is_admin(interaction):
         await interaction.response.send_message(
             "❌ 你没有权限使用此命令！仅管理员可以使用 /leavecall",
@@ -103,7 +96,6 @@ async def slash_status(interaction: discord.Interaction):
 # ========== 备选：文本命令 - 仅管理员 ==========
 @bot.command()
 async def 加入(ctx, *, target: discord.VoiceChannel = None):
-    # 权限检查
     if not is_admin_ctx(ctx):
         await ctx.send("❌ 你没有权限使用此命令！仅管理员可以使用 `!加入`")
         return
@@ -126,7 +118,6 @@ async def 加入(ctx, *, target: discord.VoiceChannel = None):
 
 @bot.command()
 async def 离开(ctx):
-    # 权限检查
     if not is_admin_ctx(ctx):
         await ctx.send("❌ 你没有权限使用此命令！仅管理员可以使用 `!离开`")
         return
@@ -139,13 +130,16 @@ async def 离开(ctx):
 
 @bot.command()
 async def 状态(ctx):
-    # 状态命令所有人可用，不加权限限制
     if ctx.voice_client and ctx.voice_client.is_connected():
         channel = ctx.voice_client.channel
         await ctx.send(f"📢 我在 **{channel.name}**")
     else:
         await ctx.send("📢 我不在语音频道里")
 
+
+# ============================================================
+#                    🎉 活跃气氛
+# ============================================================
 
 @bot.tree.command(name='cointoss', description='掷硬币决定正反面')
 async def slash_coin(interaction: discord.Interaction):
@@ -158,13 +152,13 @@ async def slash_coin(interaction: discord.Interaction):
 async def slash_pick(interaction: discord.Interaction, 选项: str):
     items = [item.strip() for item in 选项.split()]
     if len(items) < 2:
-        await interaction.response.send_message("❌ 至少给两个选项！如：`/抽签 火锅 烤肉`")
+        await interaction.response.send_message("❌ 至少给两个选项！如：`/drawlots 火锅 烤肉`")
         return
     await interaction.response.send_message(f"🎯 我选：**{random.choice(items)}**")
 
 
 # ============================================================
-#                    ⏰ 提醒功能（所有人可用）
+#                    ⏰ 提醒功能 /reminder
 # ============================================================
 
 @bot.tree.command(name='reminder', description='设置一个定时提醒')
@@ -180,7 +174,7 @@ async def slash_remind(interaction: discord.Interaction, 时间: str, 内容: st
         else:
             seconds = int(时间)
     except:
-        await interaction.response.send_message("❌ 格式不对！如：`/提醒 10分钟 开会`", ephemeral=True)
+        await interaction.response.send_message("❌ 格式不对！如：`/reminder 10分钟 开会`", ephemeral=True)
         return
 
     if seconds < 5:
@@ -196,7 +190,7 @@ async def slash_remind(interaction: discord.Interaction, 时间: str, 内容: st
 
 
 # ============================================================
-#                    🗳️ 投票功能（所有人可用）
+#                    🗳️ 投票功能 /poll 和 /polloptions
 # ============================================================
 
 @bot.tree.command(name='poll', description='发起一个简单投票（赞/踩/中立）')
@@ -211,13 +205,14 @@ async def slash_poll(interaction: discord.Interaction, 内容: str):
     await msg.add_reaction("🤷")
 
 
-@bot.tree.command(name='vote', description='发起一个带选项的投票（2-9个选项）')
+@bot.tree.command(name='polloptions', description='发起一个带选项的投票（2-9个选项）')
 @app_commands.describe(问题='投票的问题', 选项='用空格分隔的选项，如：海边 山上 游乐园')
 async def slash_poll_options(interaction: discord.Interaction, 问题: str, 选项: str):
     items = [item.strip() for item in 选项.split()]
-if len(items) < 2 or len(items) > 9:
-    await interaction.response.send_message("❌ 请提供 2 到 9 个选项", ephemeral=True)
-    return
+    if len(items) < 2 or len(items) > 9:
+        await interaction.response.send_message("❌ 请提供 2 到 9 个选项", ephemeral=True)
+        return
+
     emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
     msg_text = f"📊 **{interaction.user.name} 发起投票：{问题}**\n\n"
     for i, opt in enumerate(items):
