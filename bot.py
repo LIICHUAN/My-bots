@@ -3,6 +3,9 @@ from discord import app_commands
 from discord.ext import commands
 from keep_alive import keep_alive
 import os
+import random       
+import asyncio      
+from datetime import datetime 
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -142,6 +145,89 @@ async def 状态(ctx):
         await ctx.send(f"📢 我在 **{channel.name}**")
     else:
         await ctx.send("📢 我不在语音频道里")
+
+
+@bot.tree.command(name='cointoss', description='掷硬币决定正反面')
+async def slash_coin(interaction: discord.Interaction):
+    result = random.choice(["正面 🪙", "反面 🪙"])
+    await interaction.response.send_message(f"掷硬币结果：**{result}**")
+
+
+@bot.tree.command(name='drawlots', description='从多个选项中随机选一个')
+@app_commands.describe(选项='用空格分隔的选项，如：火锅 烤肉 日料')
+async def slash_pick(interaction: discord.Interaction, 选项: str):
+    items = [item.strip() for item in 选项.split()]
+    if len(items) < 2:
+        await interaction.response.send_message("❌ 至少给两个选项！如：`/抽签 火锅 烤肉`")
+        return
+    await interaction.response.send_message(f"🎯 我选：**{random.choice(items)}**")
+
+
+# ============================================================
+#                    ⏰ 提醒功能（所有人可用）
+# ============================================================
+
+@bot.tree.command(name='提醒', description='设置一个定时提醒')
+@app_commands.describe(时间='如：10秒、5分钟、2小时', 内容='提醒的内容')
+async def slash_remind(interaction: discord.Interaction, 时间: str, 内容: str):
+    try:
+        if "秒" in 时间:
+            seconds = int(时间.replace("秒", ""))
+        elif "分钟" in 时间 or "分" in 时间:
+            seconds = int(时间.replace("分钟", "").replace("分", "")) * 60
+        elif "小时" in 时间 or "时" in 时间:
+            seconds = int(时间.replace("小时", "").replace("时", "")) * 3600
+        else:
+            seconds = int(时间)
+    except:
+        await interaction.response.send_message("❌ 格式不对！如：`/提醒 10分钟 开会`", ephemeral=True)
+        return
+
+    if seconds < 5:
+        await interaction.response.send_message("❌ 至少 5 秒！", ephemeral=True)
+        return
+    if seconds > 86400:
+        await interaction.response.send_message("❌ 最多 24 小时！", ephemeral=True)
+        return
+
+    await interaction.response.send_message(f"⏰ 好的，我会在 **{时间}** 后提醒你：{内容}")
+    await asyncio.sleep(seconds)
+    await interaction.followup.send(f"⏰ {interaction.user.mention} 时间到！记得：{内容}")
+
+
+# ============================================================
+#                    🗳️ 投票功能（所有人可用）
+# ============================================================
+
+@bot.tree.command(name='投票', description='发起一个简单投票（赞/踩/中立）')
+@app_commands.describe(内容='投票的内容')
+async def slash_poll(interaction: discord.Interaction, 内容: str):
+    await interaction.response.send_message(
+        f"📊 **{interaction.user.name} 发起投票：**\n{内容}\n\n👍 赞同 | 👎 反对 | 🤷 中立"
+    )
+    msg = await interaction.original_response()
+    await msg.add_reaction("👍")
+    await msg.add_reaction("👎")
+    await msg.add_reaction("🤷")
+
+
+@bot.tree.command(name='vote', description='发起一个带选项的投票（2-3个选项）')
+@app_commands.describe(问题='投票的问题', 选项='用空格分隔的选项，如：海边 山上 游乐园')
+async def slash_poll_options(interaction: discord.Interaction, 问题: str, 选项: str):
+    items = [item.strip() for item in 选项.split()]
+    if len(items) < 2 or len(items) > 3:
+    await interaction.response.send_message("❌ 请提供 2 或 3 个选项", ephemeral=True)
+    return
+
+    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"]
+    msg_text = f"📊 **{interaction.user.name} 发起投票：{问题}**\n\n"
+    for i, opt in enumerate(items):
+        msg_text += f"{emojis[i]} {opt}\n"
+
+    await interaction.response.send_message(msg_text)
+    msg = await interaction.original_response()
+    for i in range(len(items)):
+        await msg.add_reaction(emojis[i])
 
 
 keep_alive()
