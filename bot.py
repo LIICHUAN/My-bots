@@ -13,6 +13,60 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# ========== 全局变量 ==========
+silence_tasks = {}  # {guild_id: asyncio.Task}
+
+
+# ========== 静音循环播放函数 ==========
+async def play_silence_loop(voice_client, guild_id):
+    """在指定语音频道循环播放静音"""
+    try:
+        if not os.path.exists('silence.mp3'):
+            print(f"⚠️ silence.mp3 文件不存在 (Guild: {guild_id})")
+            return
+        
+        if not voice_client.is_connected():
+            return
+        
+        # 使用 FFmpeg 的 -loop -1 实现无限循环
+        audio_source = discord.FFmpegPCMAudio(
+            'silence.mp3',
+            options='-loop -1 -vn'
+        )
+        voice_client.play(audio_source)
+        print(f"🔇 静音循环已启动 (Guild: {guild_id})")
+        
+        # 保持任务活跃，监听播放状态
+        while voice_client.is_connected() and voice_client.is_playing():
+            await asyncio.sleep(10)
+            
+    except asyncio.CancelledError:
+        print(f"🔇 静音循环已停止 (Guild: {guild_id})")
+    except Exception as e:
+        print(f"⚠️ 静音循环异常 (Guild: {guild_id}): {e}")
+    finally:
+        if guild_id in silence_tasks:
+            del silence_tasks[guild_id]
+
+
+# ========== 心跳保活任务 ==========
+async def voice_heartbeat():
+    """每 60 秒检查一次语音连接状态"""
+    await bot.wait_until_ready()
+    while not bot.is_closed():
+        try:
+            for guild in bot.guilds:
+                vc = guild.voice_client
+                if vc and vc.is_connected():
+                    if not vc.is_playing() and guild.id in silence_tasks:
+                        # 如果静音任务还在但播放停止了，重新触发
+                        task = asyncio.create_task(play_silence_loop(vc, guild.id))
+                        silence_tasks[guild.id] = task
+        except Exception as e:
+            print(f"心跳检查异常: {e}")
+        await asyncio.sleep(60)
+
+
 # ========== 权限检查函数 ==========
 def is_admin(interaction: discord.Interaction) -> bool:
     return interaction.user.guild_permissions.administrator
@@ -30,6 +84,9 @@ async def on_ready():
     print('使用 /leavecall 让我离开')
     print('使用 /status 查看我在哪')
     print('⚠️ 只有管理员可以使用加入和离开命令')
+    
+    # 启动心跳任务
+    bot.loop.create_task(voice_heartbeat())
 
 
 # ========== 加入命令（斜杠版）- 仅管理员 ==========
@@ -61,8 +118,18 @@ async def slash_join(interaction: discord.Interaction, channel: discord.VoiceCha
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
 
-    await target.connect()
-    await interaction.response.send_message(f"✅ 已加入 {target.name}")
+    voice_client = await target.connect()
+    
+    # ========== 启动静音循环 ==========
+    guild_id = interaction.guild.id
+    if guild_id in silence_tasks:
+        silence_tasks[guild_id].cancel()
+        del silence_tasks[guild_id]
+    
+    task = asyncio.create_task(play_silence_loop(voice_client, guild_id))
+    silence_tasks[guild_id] = task
+    
+    await interaction.response.send_message(f"✅ 已加入 {target.name} 并开始静音挂机")
 
 
 # ========== 离开命令（斜杠版）- 仅管理员 ==========
@@ -74,6 +141,13 @@ async def slash_leave(interaction: discord.Interaction):
             ephemeral=True
         )
         return
+
+    guild_id = interaction.guild.id
+    
+    # ========== 停止静音循环 ==========
+    if guild_id in silence_tasks:
+        silence_tasks[guild_id].cancel()
+        del silence_tasks[guild_id]
 
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
@@ -113,14 +187,28 @@ async def 加入(ctx, *, target: discord.VoiceChannel = None):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
 
-    await target.connect()
-    await ctx.send(f"✅ 已加入 {target.name}")
+    voice_client = await target.connect()
+    
+    guild_id = ctx.guild.id
+    if guild_id in silence_tasks:
+        silence_tasks[guild_id].cancel()
+        del silence_tasks[guild_id]
+    
+    task = asyncio.create_task(play_silence_loop(voice_client, guild_id))
+    silence_tasks[guild_id] = task
+    
+    await ctx.send(f"✅ 已加入 {target.name} 并开始静音挂机")
 
 @bot.command()
 async def 离开(ctx):
     if not is_admin_ctx(ctx):
         await ctx.send("❌ 你没有权限使用此命令！仅管理员可以使用 `!离开`")
         return
+
+    guild_id = ctx.guild.id
+    if guild_id in silence_tasks:
+        silence_tasks[guild_id].cancel()
+        del silence_tasks[guild_id]
 
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
@@ -197,40 +285,31 @@ async def slash_remind(
         await interaction.response.send_message("❌ 最多 24 小时！", ephemeral=True)
         return
 
-    # 显示是否开启语音
     voice_status = "🔊 开启" if voice == 'on' else "🔇 关闭"
     await interaction.response.send_message(f"⏰ 好的，我会在 **{time}** 后提醒你：{content}\n🔊 语音提醒：{voice_status}")
 
-    # 获取文字频道（用于后续发送提醒）
     channel = interaction.channel
-
-    # 等待指定时间
     await asyncio.sleep(seconds)
 
-    # ========== 通过文字频道发送提醒（不用 followup） ==========
     await channel.send(f"⏰ {interaction.user.mention} 时间到！记得：{content}")
 
-    # ========== 如果用户关闭了语音提醒，到此结束 ==========
     if voice == 'off':
         await channel.send("ℹ️ 语音提醒已关闭，只发了文字提醒～")
         return
 
-    # ========== 语音提醒逻辑（用户开启了语音） ==========
     guild_id = interaction.guild.id
     user_voice = interaction.user.voice
     bot_voice = interaction.guild.voice_client
 
-    # 情况一：机器人在频道，人在频道 → 播放提醒
+    # 情况一：机器人在频道，人在频道
     if bot_voice and bot_voice.is_connected() and user_voice and user_voice.channel:
         try:
-            # 先停止静音循环
             if guild_id in silence_tasks:
                 silence_tasks[guild_id].cancel()
                 del silence_tasks[guild_id]
             
             await asyncio.sleep(0.5)
             
-            # 播放提醒音效
             if os.path.exists('remind.mp3'):
                 audio_source = discord.FFmpegPCMAudio('remind.mp3')
                 bot_voice.play(audio_source)
@@ -242,7 +321,6 @@ async def slash_remind(
             else:
                 await channel.send("⚠️ 提醒音效文件不存在，只发了文字提醒")
             
-            # 恢复静音循环
             if bot_voice and bot_voice.is_connected():
                 task = asyncio.create_task(play_silence_loop(bot_voice, guild_id))
                 silence_tasks[guild_id] = task
@@ -252,12 +330,12 @@ async def slash_remind(
             await channel.send("⚠️ 语音提醒播放失败，但文字提醒已发送")
         return
 
-    # 情况二：机器人在频道，人不在频道 → 显示人不在
+    # 情况二：机器人在频道，人不在
     if bot_voice and bot_voice.is_connected() and not user_voice:
         await channel.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
         return
 
-    # 情况三：机器人不在频道，人在频道 → 进去播放后退出（不切静音）
+    # 情况三：机器人不在频道，人在频道
     if not bot_voice and user_voice and user_voice.channel:
         try:
             voice_channel = user_voice.channel
@@ -274,7 +352,6 @@ async def slash_remind(
             else:
                 await channel.send("⚠️ 提醒音效文件不存在，只发了文字提醒")
             
-            # 播放完成后退出（不切静音）
             if voice_client and voice_client.is_connected():
                 await voice_client.disconnect()
                 await channel.send("👋 播放完成，已离开语音频道")
@@ -284,12 +361,13 @@ async def slash_remind(
             await channel.send("⚠️ 无法连接到语音频道，只发了文字提醒")
         return
 
-    # 情况四：机器人不在频道，人也不在频道
+    # 情况四：都不在
     if not bot_voice and not user_voice:
-        await channel.send("ℹ️ 你不在语音频道里，无法播放语音提醒")
+        await channel.send("ℹ️ 你不在语音频道里，无法播放语音提醒～")
+
 
 # ============================================================
-#                    🗳️ 投票功能 /poll 和 /polloptions
+#                    🗳️ 投票功能
 # ============================================================
 
 @bot.tree.command(name='poll', description='发起一个简单投票（赞/踩/中立）')
